@@ -1,15 +1,48 @@
 import { getSupabaseClient } from '@/lib/supabase';
 
 async function getHealthData() {
+  const checks: Record<string, { status: 'ok' | 'error'; message?: string; latency?: number }> = {};
+
   try {
     const supabase = getSupabaseClient();
 
+    // Check 1: Database connection
+    try {
+      const startDb = Date.now();
+      const { error: dbError } = await supabase.from('leads').select('id').limit(1);
+      const latency = Date.now() - startDb;
+
+      if (dbError) {
+        checks.database = { status: 'error', message: dbError.message, latency };
+      } else {
+        checks.database = { status: 'ok', latency };
+      }
+    } catch (dbErr) {
+      checks.database = { status: 'error', message: dbErr instanceof Error ? dbErr.message : 'Connection failed' };
+    }
+
+    // Check 2: Environment variables
+    const requiredEnvVars = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'WEBHOOK_SECRET'];
+    const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+
+    if (missingVars.length > 0) {
+      checks.environment = { status: 'error', message: `Missing: ${missingVars.join(', ')}` };
+    } else {
+      checks.environment = { status: 'ok' };
+    }
+
     // Get recent leads
-    const { data: recentLeads } = await supabase
+    const { data: recentLeads, error: leadsError } = await supabase
       .from('leads')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(10);
+
+    if (leadsError) {
+      checks.recent_leads = { status: 'error', message: leadsError.message };
+    } else {
+      checks.recent_leads = { status: 'ok', message: `${recentLeads?.length || 0} leads fetched` };
+    }
 
     // Get stats for last 24h
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -25,8 +58,11 @@ async function getHealthData() {
       bySource[source] = (bySource[source] || 0) + 1;
     });
 
+    const hasErrors = Object.values(checks).some(c => c.status === 'error');
+
     return {
-      healthy: true,
+      healthy: !hasErrors,
+      checks,
       recentLeads: recentLeads || [],
       stats: {
         total24h: last24h?.length || 0,
@@ -34,11 +70,14 @@ async function getHealthData() {
       },
     };
   } catch (error) {
+    checks.system = { status: 'error', message: error instanceof Error ? error.message : 'Unknown error' };
+
     return {
       healthy: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      checks,
       recentLeads: [],
       stats: { total24h: 0, bySource: {} },
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
@@ -195,6 +234,73 @@ export default async function DashboardPage() {
             font-size: 0.85rem;
           }
 
+          .checks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+          }
+
+          .check-item {
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+          }
+
+          .check-ok {
+            background: #d4edda;
+            border-color: #28a745;
+          }
+
+          .check-error {
+            background: #f8d7da;
+            border-color: #dc3545;
+          }
+
+          .check-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+          }
+
+          .check-content {
+            flex: 1;
+          }
+
+          .check-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+            text-transform: capitalize;
+          }
+
+          .check-message {
+            font-size: 0.85rem;
+            color: #666;
+          }
+
+          .check-error .check-message {
+            color: #721c24;
+            font-weight: 500;
+          }
+
+          .error-banner {
+            background: #dc3545;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            font-weight: 500;
+          }
+
+          .error-details {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            opacity: 0.9;
+          }
+
           .refresh-note {
             text-align: center;
             color: white;
@@ -250,6 +356,40 @@ export default async function DashboardPage() {
               <a href="/" className="api-link" target="_blank">🏠 Home</a>
             </div>
           </header>
+
+          {!data.healthy && data.error && (
+            <div className="error-banner">
+              ⚠️ Error crítico del sistema
+              <div className="error-details">{data.error}</div>
+            </div>
+          )}
+
+          {data.checks && Object.keys(data.checks).length > 0 && (
+            <div className="card">
+              <h2>🔍 Estado de los Componentes</h2>
+              <div className="checks-grid">
+                {Object.entries(data.checks).map(([name, check]) => (
+                  <div
+                    key={name}
+                    className={`check-item ${check.status === 'ok' ? 'check-ok' : 'check-error'}`}
+                  >
+                    <div className="check-icon">
+                      {check.status === 'ok' ? '✅' : '❌'}
+                    </div>
+                    <div className="check-content">
+                      <div className="check-name">{name.replace(/_/g, ' ')}</div>
+                      {check.message && (
+                        <div className="check-message">{check.message}</div>
+                      )}
+                      {check.latency && (
+                        <div className="check-message">Latencia: {check.latency}ms</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid">
             <div className="card">
