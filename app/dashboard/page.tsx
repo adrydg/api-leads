@@ -104,7 +104,14 @@ async function getHealthData() {
       healthy: false,
       checks,
       recentLeads: [],
-      stats: { total24h: 0, bySource: {} },
+      stats: {
+        total24h: 0,
+        last5min: 0,
+        last7days: 0,
+        dailyAvg: '0',
+        bySource: {},
+        byHour: {},
+      },
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
