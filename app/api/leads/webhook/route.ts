@@ -139,9 +139,9 @@ export async function POST(req: NextRequest) {
 
     const validation = LeadSchema.safeParse(leadData);
     if (!validation.success) {
-      console.error('❌ Validation failed:', validation.error.errors);
+      console.error('❌ Validation failed:', validation.error.issues);
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.error.errors },
+        { error: 'Validation failed', details: validation.error.issues },
         { status: 400, headers: corsHeaders }
       );
     }
