@@ -51,36 +51,12 @@ async function getHealthData() {
       .select('id, source, created_at')
       .gte('created_at', oneDayAgo);
 
-    // Get stats for last 5 minutes (recent activity)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: last5min } = await supabase
-      .from('leads')
-      .select('id')
-      .gte('created_at', fiveMinutesAgo);
-
-    // Get stats for last 7 days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: last7days } = await supabase
-      .from('leads')
-      .select('id, created_at')
-      .gte('created_at', sevenDaysAgo);
-
     // Get stats by source
     const bySource: Record<string, number> = {};
     last24h?.forEach(lead => {
       const source = lead.source || 'unknown';
       bySource[source] = (bySource[source] || 0) + 1;
     });
-
-    // Get distribution by hour (last 24h)
-    const byHour: Record<number, number> = {};
-    last24h?.forEach(lead => {
-      const hour = new Date(lead.created_at).getHours();
-      byHour[hour] = (byHour[hour] || 0) + 1;
-    });
-
-    // Get daily average (last 7 days)
-    const dailyAvg = last7days ? (last7days.length / 7).toFixed(1) : '0';
 
     const hasErrors = Object.values(checks).some(c => c.status === 'error');
 
@@ -90,11 +66,7 @@ async function getHealthData() {
       recentLeads: recentLeads || [],
       stats: {
         total24h: last24h?.length || 0,
-        last5min: last5min?.length || 0,
-        last7days: last7days?.length || 0,
-        dailyAvg,
         bySource,
-        byHour,
       },
     };
   } catch (error) {
@@ -104,14 +76,7 @@ async function getHealthData() {
       healthy: false,
       checks,
       recentLeads: [],
-      stats: {
-        total24h: 0,
-        last5min: 0,
-        last7days: 0,
-        dailyAvg: '0',
-        bySource: {},
-        byHour: {},
-      },
+      stats: { total24h: 0, bySource: {} },
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -336,122 +301,6 @@ export default async function DashboardPage() {
             opacity: 0.9;
           }
 
-          .activity-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: #d4edda;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #155724;
-            margin-top: 10px;
-          }
-
-          .activity-indicator.active {
-            background: #28a745;
-            color: white;
-            animation: pulse 2s infinite;
-          }
-
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-          }
-
-          .bar-chart {
-            display: flex;
-            align-items: flex-end;
-            gap: 4px;
-            height: 100px;
-            margin-top: 15px;
-          }
-
-          .bar {
-            flex: 1;
-            background: linear-gradient(to top, #667eea, #764ba2);
-            border-radius: 4px 4px 0 0;
-            min-height: 2px;
-            position: relative;
-            transition: all 0.3s;
-          }
-
-          .bar:hover {
-            opacity: 0.8;
-          }
-
-          .bar-label {
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 0.7rem;
-            color: #666;
-            white-space: nowrap;
-          }
-
-          .bar-value {
-            position: absolute;
-            top: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 0.7rem;
-            font-weight: bold;
-            color: #667eea;
-          }
-
-          .source-bar {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-          }
-
-          .source-bar-label {
-            min-width: 200px;
-            font-weight: 500;
-            font-size: 0.9rem;
-          }
-
-          .source-bar-track {
-            flex: 1;
-            height: 30px;
-            background: #f0f0f0;
-            border-radius: 15px;
-            overflow: hidden;
-            position: relative;
-          }
-
-          .source-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            padding-right: 10px;
-            color: white;
-            font-weight: bold;
-            font-size: 0.85rem;
-            transition: width 0.5s ease;
-          }
-
-          .trend-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 0.85rem;
-            margin-top: 5px;
-          }
-
-          .trend-up {
-            color: #28a745;
-          }
-
-          .trend-down {
-            color: #dc3545;
-          }
-
           .refresh-note {
             text-align: center;
             color: white;
@@ -547,11 +396,6 @@ export default async function DashboardPage() {
               <h2>📈 Últimas 24 horas</h2>
               <div className="metric">{data.stats.total24h}</div>
               <div className="metric-label">Leads recibidos</div>
-              {data.stats.last5min > 0 && (
-                <div className="activity-indicator active">
-                  ⚡ {data.stats.last5min} lead{data.stats.last5min !== 1 ? 's' : ''} en los últimos 5 min
-                </div>
-              )}
             </div>
 
             <div className="card">
@@ -559,72 +403,31 @@ export default async function DashboardPage() {
               <div className="metric">
                 {(data.stats.total24h / 24).toFixed(1)}
               </div>
-              <div className="metric-label">Leads/hora (24h)</div>
+              <div className="metric-label">Leads/hora</div>
             </div>
 
             <div className="card">
-              <h2>📊 Últimos 7 días</h2>
-              <div className="metric">{data.stats.last7days}</div>
-              <div className="metric-label">Total de leads</div>
-              <div className="trend-indicator">
-                📅 Promedio diario: <strong>{data.stats.dailyAvg}</strong> leads/día
-              </div>
+              <h2>🎯 Fuentes Activas</h2>
+              <div className="metric">{Object.keys(data.stats.bySource).length}</div>
+              <div className="metric-label">Orígenes diferentes</div>
             </div>
           </div>
 
           <div className="grid">
             <div className="card">
-              <h2>🎯 Ranking de Fuentes (24h)</h2>
+              <h2>🎯 Leads por Origen</h2>
               {Object.entries(data.stats.bySource).length > 0 ? (
-                (() => {
-                  const sortedSources = Object.entries(data.stats.bySource).sort(([, a], [, b]) => b - a);
-                  const maxCount = Math.max(...sortedSources.map(([, count]) => count));
-                  return sortedSources.map(([source, count]) => (
-                    <div key={source} className="source-bar">
-                      <div className="source-bar-label">{source}</div>
-                      <div className="source-bar-track">
-                        <div
-                          className="source-bar-fill"
-                          style={{ width: `${(count / maxCount) * 100}%` }}
-                        >
-                          {count}
-                        </div>
-                      </div>
+                Object.entries(data.stats.bySource)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([source, count]) => (
+                    <div key={source} className="source-item">
+                      <span className="source-name">{source}</span>
+                      <span className="source-count">{count}</span>
                     </div>
-                  ));
-                })()
+                  ))
               ) : (
                 <p style={{ color: '#666' }}>No hay datos de las últimas 24 horas</p>
               )}
-            </div>
-
-            <div className="card">
-              <h2>📊 Distribución por Hora (24h)</h2>
-              {Object.keys(data.stats.byHour).length > 0 ? (
-                <div className="bar-chart">
-                  {Array.from({ length: 24 }, (_, i) => {
-                    const count = data.stats.byHour[i] || 0;
-                    const maxCount = Math.max(...Object.values(data.stats.byHour));
-                    const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
-                    return (
-                      <div
-                        key={i}
-                        className="bar"
-                        style={{ height: `${height}%` }}
-                        title={`${i}:00 - ${count} leads`}
-                      >
-                        {count > 0 && <span className="bar-value">{count}</span>}
-                        <span className="bar-label">{i}h</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p style={{ color: '#666' }}>No hay datos de distribución horaria</p>
-              )}
-              <p style={{ marginTop: '30px', fontSize: '0.85rem', color: '#666', textAlign: 'center' }}>
-                Distribución de leads por hora del día (últimas 24h)
-              </p>
             </div>
 
             <div className="card" style={{ gridColumn: 'span 2' }}>
