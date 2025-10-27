@@ -1,6 +1,14 @@
 import { getSupabaseClient } from '@/lib/supabase';
+import { headers } from 'next/headers';
+
+// Force dynamic rendering - no caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 async function getHealthData() {
+  // Force dynamic by reading headers
+  headers();
+
   const checks: Record<string, { status: 'ok' | 'error'; message?: string; latency?: number }> = {};
 
   try {
@@ -90,6 +98,9 @@ export default async function DashboardPage() {
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
         <title>Dashboard - API Leads Monitor</title>
         <style>{`
           * {
