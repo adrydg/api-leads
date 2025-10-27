@@ -57,8 +57,9 @@ export async function POST(req: NextRequest) {
   const corsHeaders = getCORSHeaders(origin);
 
   try {
-    // 1. Verificar CORS
-    if (!checkCORS(origin)) {
+    // 1. Verificar CORS (solo si hay Origin header - browsers)
+    // Server-to-server calls no tienen Origin, y eso está bien
+    if (origin && !checkCORS(origin)) {
       console.error('❌ CORS rejected:', origin);
       return NextResponse.json(
         { error: 'Origin not allowed' },
