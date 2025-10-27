@@ -1,16 +1,19 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
-
-if (!WEBHOOK_SECRET) {
-  throw new Error('WEBHOOK_SECRET environment variable is not set');
+function getWebhookSecret(): string {
+  const secret = process.env.WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error('WEBHOOK_SECRET environment variable is not set');
+  }
+  return secret;
 }
 
 /**
  * Generate HMAC signature for payload
  */
-export function generateSignature(payload: string, secret: string = WEBHOOK_SECRET): string {
-  return createHmac('sha256', secret)
+export function generateSignature(payload: string, secret?: string): string {
+  const secretKey = secret || getWebhookSecret();
+  return createHmac('sha256', secretKey)
     .update(payload)
     .digest('hex');
 }
@@ -21,9 +24,10 @@ export function generateSignature(payload: string, secret: string = WEBHOOK_SECR
 export function verifySignature(
   payload: string,
   signature: string,
-  secret: string = WEBHOOK_SECRET
+  secret?: string
 ): boolean {
-  const expectedSignature = generateSignature(payload, secret);
+  const secretKey = secret || getWebhookSecret();
+  const expectedSignature = generateSignature(payload, secretKey);
 
   try {
     const signatureBuffer = Buffer.from(signature, 'hex');
